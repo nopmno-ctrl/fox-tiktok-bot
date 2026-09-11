@@ -329,31 +329,21 @@ function formatTelegramReport(d) {
   const e = escapeHtml;
   const lines = [];
 
-  // رأسية TikCheck المعتمدة والمطابقة تماماً لطلب المستخدم
-  lines.push('⚡ <b>فـحـص TIKCHECK الـمـعـتـمـد</b> ⚡');
-  lines.push('━━━━━━━━━━━━━━━━━━━━');
-  lines.push(`الحساب • <b>${e(d.username)}</b> || ${d.country ? `تم تسجيل الدخول من ${d.country.flag} ${d.country.code || ''}` : 'تم تسجيل الدخول من 🌐'}`);
+  const countryDisplay = d.country 
+    ? `تم تسجيل الدخول من ${d.country.flag} ${d.country.name || d.country.code || ''}`
+    : 'تم تسجيل الدخول من 🌐';
+
+  // شكل TikCheck المعتمد تماماً
+  lines.push(`الحساب • <b>${e(d.username)}</b> || ${countryDisplay}`);
   lines.push(d.hasPasskey ? 'يوجد Passkey ⚠️' : 'لا يوجد Passkey ✅');
   lines.push(d.hasExternal ? `يوجد روابط خارجية (${e(d.externalPlatform)}) ⚠️` : 'لا يوجد روابط خارجية ✅');
   lines.push(`البريد: (${d.hasEmail ? '✅' : '❌'})  الهاتف: (${d.hasPhone ? '✅' : '❌'})`);
   lines.push(`المتابعون: (${e(d.stats.followers)}) || مستوى الدعم: (N/A)`);
-  lines.push('━━━━━━━━━━━━━━━━━━━━');
-  lines.push('🦅 <b>الـتـفـاصـيـل الاسـتـخـبـاراتـيـة (FOX OSINT):</b>');
-  lines.push(`🆔 المعرف الرقمي: <code>${e(d.uid)}</code>`);
+  lines.push('');
+  lines.push(`🆔 UID: <code>${e(d.uid)}</code> | التوثيق: ${d.verified ? 'موثق ✔️' : 'غير موثق'}`);
   if (d.createdStr) {
-    const src = d.createdSource === 'exact' ? 'رسمي' : 'تقديري Snowflake';
-    lines.push(`📅 تاريخ الإنشاء: ${e(d.createdStr)} <i>(${src})</i>`);
+    lines.push(`📅 الإنشاء: ${e(d.createdStr)}`);
   }
-  lines.push(`✅ التوثيق: ${d.verified ? 'موثق ✔️' : 'غير موثق'}`);
-  lines.push(`🔒 نوع الحساب: ${d.privateAccount ? 'خاص 🔐' : 'عام 🌍'}`);
-  lines.push(`❤️ الإعجابات: ${e(d.stats.likes)} | 🎬 الفيديوهات: ${e(d.stats.videos)}`);
-  if (d.signature) {
-    lines.push(`📝 النبذة: <i>${e(d.signature)}</i>`);
-  }
-  if (d.bioLink) {
-    lines.push(`🔗 الرابط: ${e(d.bioLink)}`);
-  }
-  lines.push(`🔗 <a href="${e(d.profileUrl)}">رابط الحساب على TikTok</a>`);
 
   return lines.join('\n');
 }
