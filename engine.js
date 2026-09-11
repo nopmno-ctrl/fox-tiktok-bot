@@ -1,0 +1,324 @@
+/**
+ * ==============================================================================
+ * 🦅 FOX CLOUD ENGINE - TIKTOK INSPECTION CORE v1.0
+ * ==============================================================================
+ * محرك الفحص السحابي الحقيقي للحسابات بدون تسجيل دخول
+ * مصمم ليعمل على سيرفرات VPS (Render / Koyeb / Railway / Ubuntu)
+ * ==============================================================================
+ */
+
+const axios = require('axios');
+
+const COUNTRY_NAMES = {
+  JO: 'الأردن', EG: 'مصر', SA: 'السعودية', AE: 'الإمارات', IQ: 'العراق',
+  SY: 'سوريا', LB: 'لبنان', PS: 'فلسطين', KW: 'الكويت', QA: 'قطر',
+  BH: 'البحرين', OM: 'عمان', YE: 'اليمن', LY: 'ليبيا', SD: 'السودان',
+  DZ: 'الجزائر', MA: 'المغرب', TN: 'تونس', TR: 'تركيا',
+  US: 'الولايات المتحدة', GB: 'المملكة المتحدة', DE: 'ألمانيا', FR: 'فرنسا',
+  CA: 'كندا', RU: 'روسيا', IT: 'إيطاليا', ES: 'إسبانيا', NL: 'هولندا', SE: 'السويد'
+};
+
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+  'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36'
+];
+
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function normalizeUsername(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (/^(https?:\/\/)?(vm|vt)\.tiktok\.com\//i.test(s)) return null;
+  s = s.replace(/^https?:\/\//i, '').replace(/^(www\.)?tiktok\.com\//i, '');
+  s = s.replace(/^@/, '').split(/[?/#]/)[0];
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(s) || !/[A-Za-z0-9]/.test(s)) return null;
+  return s;
+}
+
+async function resolveShortShareLink(shortUrl, proxyUrl = null) {
+  let current = String(shortUrl).trim();
+  if (!/^https?:\/\//i.test(current)) current = `https://${current}`;
+  
+  const config = {
+    maxRedirects: 0,
+    validateStatus: () => true,
+    timeout: 10000,
+    headers: { 'User-Agent': USER_AGENTS[0] }
+  };
+
+  for (let hop = 0; hop < 5; hop++) {
+    const res = await axios.get(current, config);
+    const loc = res.headers?.location;
+    if (loc && [301, 302, 303, 307, 308].includes(res.status)) {
+      current = new URL(loc, current).href;
+      continue;
+    }
+    break;
+  }
+  const m = current.match(/tiktok\.com\/@([A-Za-z0-9._]+)/i);
+  if (!m) throw new Error('تعذر استخراج اسم المستخدم من رابط المشاركة المختصر.');
+  return m[1];
+}
+
+function extractCountryCodeFromText(text) {
+  if (!text || typeof text !== 'string') return null;
+  const letters = [];
+  for (const char of text) {
+    const cp = char.codePointAt(0);
+    if (cp >= 0x1f1e6 && cp <= 0x1f1ff) {
+      letters.push(String.fromCharCode(cp - 0x1f1e6 + 65));
+      if (letters.length === 2) return letters.join('');
+    }
+  }
+  return null;
+}
+
+function decodeSnowflakeEstimate(uidStr) {
+  try {
+    const big = BigInt(uidStr);
+    const sec = Number(big >> 32n);
+    const d = new Date(sec * 1000);
+    if (sec > 0 && d.getTime() > Date.UTC(2016, 8, 1)) {
+      return d;
+    }
+  } catch (_) {}
+  return null;
+}
+
+const pad = (n) => String(n).padStart(2, '0');
+function formatUtc(d) {
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+         `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`;
+}
+
+function extractUserDetail(html) {
+  const m = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m || !m[1]) return null;
+  try {
+    return JSON.parse(m[1])['__DEFAULT_SCOPE__']?.['webapp.user-detail'] ?? null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function fetchTikTokProfileHtml(username, proxyUrl = null) {
+  const url = `https://www.tiktok.com/@${encodeURIComponent(username)}`;
+  
+  for (const ua of USER_AGENTS) {
+    try {
+      const config = {
+        headers: {
+          'User-Agent': ua,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache'
+        },
+        timeout: 12000,
+        validateStatus: () => true
+      };
+
+      const res = await axios.get(url, config);
+      if (res.status === 200 && res.data) {
+        const detail = extractUserDetail(String(res.data));
+        if (detail && detail.userInfo && detail.userInfo.user) {
+          return { status: 200, detail };
+        }
+      }
+    } catch (e) {}
+  }
+
+  // محاولة عبر بوابة السيرفر الأمريكي المباشرة
+  try {
+    const usRes = await axios.get(`https://web-va.tiktok.com/@${encodeURIComponent(username)}`, {
+      headers: {
+        'User-Agent': USER_AGENTS[0],
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'X-Forwarded-For': '104.28.194.22',
+        'Client-IP': '104.28.194.22'
+      },
+      timeout: 10000,
+      validateStatus: () => true
+    });
+    if (usRes.status === 200 && usRes.data) {
+      const detail = extractUserDetail(String(usRes.data));
+      if (detail && detail.userInfo && detail.userInfo.user) {
+        return { status: 200, detail };
+      }
+    }
+  } catch (e) {}
+
+  return { status: 403, detail: null };
+}
+
+async function inspectAccount(rawInput, proxyUrl = null) {
+  let username = normalizeUsername(rawInput);
+  if (!username && /^(https?:\/\/)?(vm|vt)\.tiktok\.com\//i.test(String(rawInput || '').trim())) {
+    username = await resolveShortShareLink(rawInput, proxyUrl);
+  }
+  if (!username) {
+    let s = String(rawInput || '').trim();
+    s = s.replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').split('?')[0].split('/')[0].replace(/^@/, '').trim();
+    if (s && /^[A-Za-z0-9._]{1,30}$/.test(s)) username = s;
+  }
+
+  if (!username) {
+    throw new Error('يرجى إرسال اسم مستخدم صحيح أو رابط حساب.');
+  }
+
+  const { status, detail } = await fetchTikTokProfileHtml(username, proxyUrl);
+
+  if (!detail || !detail.userInfo || !detail.userInfo.user) {
+    if (detail && detail.statusCode === 10221) {
+      throw new Error(`الحساب @${username} محظور نهائياً من إدارة تيك توك.`);
+    }
+    throw new Error(`تعذر جلب بيانات الحساب @${username} — قد يكون الحساب محذوفاً أو خاصاً أو جدار الحماية نشط.`);
+  }
+
+  const ud = detail.userInfo.user;
+  const stats = detail.userInfo.stats || {};
+  const statsV2 = detail.userInfo.statsV2 || {};
+
+  // كشف الدولة
+  let country = null;
+  const flagCode = extractCountryCodeFromText(`${ud.nickname || ''} ${ud.signature || ''}`);
+  if (flagCode && COUNTRY_NAMES[flagCode]) {
+    country = {
+      code: flagCode,
+      flag: String.fromCodePoint(...[...flagCode].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)),
+      name: COUNTRY_NAMES[flagCode],
+      sourceLabel: 'علم معلن في الاسم/النبذة'
+    };
+  } else if (ud.region) {
+    const code = String(ud.region).toUpperCase();
+    country = {
+      code,
+      flag: '🌐',
+      name: COUNTRY_NAMES[code] || code,
+      sourceLabel: 'حقل region الرسمي'
+    };
+  } else {
+    // هوية معلنة
+    const text = `${ud.nickname || ''} ${ud.signature || ''}`;
+    if (/مصر|egypt/i.test(text)) country = { code: 'EG', flag: '🇪🇬', name: 'مصر', sourceLabel: 'الهوية المعلنة' };
+    else if (/الأردن|الاردن|jordan/i.test(text)) country = { code: 'JO', flag: '🇯🇴', name: 'الأردن', sourceLabel: 'الهوية المعلنة' };
+    else if (/السعودية|سعودي|saudi|ksa/i.test(text)) country = { code: 'SA', flag: '🇸🇦', name: 'السعودية', sourceLabel: 'الهوية المعلنة' };
+    else if (/العراق|iraq/i.test(text)) country = { code: 'IQ', flag: '🇮🇶', name: 'العراق', sourceLabel: 'الهوية المعلنة' };
+  }
+
+  // تاريخ الإنشاء
+  let createdStr = null;
+  let createdSource = null;
+  if (ud.createTime) {
+    createdStr = formatUtc(new Date(Number(ud.createTime) * 1000));
+    createdSource = 'exact';
+  } else {
+    const est = decodeSnowflakeEstimate(ud.id);
+    if (est) {
+      createdStr = formatUtc(est);
+      createdSource = 'estimate';
+    }
+  }
+
+  // الروابط الخارجية
+  const bioText = `${ud.signature || ''} ${(ud.bioLink && ud.bioLink.link) ? String(ud.bioLink.link) : ''}`;
+  const BIO_PLATFORMS = [
+    ['إنستغرام', /instagram\.com|instagr\.am/i],
+    ['سناب شات', /snapchat\.com/i],
+    ['يوتيوب', /youtube\.com|youtu\.be/i],
+    ['فيسبوك', /facebook\.com|fb\.me/i],
+    ['تلجرام', /t\.me|telegram\.me/i],
+    ['واتساب', /wa\.me|whatsapp/i]
+  ];
+  const bioMentions = BIO_PLATFORMS.filter(([, rx]) => rx.test(bioText)).map(([label]) => label);
+
+  const numFollowers = Number(statsV2.followerCount || stats.followerCount || 0);
+  const roomIdStr = String(ud.roomId || '').trim();
+
+  return {
+    ok: true,
+    username: ud.uniqueId || username,
+    nickname: ud.nickname || '',
+    uid: String(ud.id || ''),
+    avatar: ud.avatarLarger || ud.avatarMedium || ud.avatarThumb || '',
+    country,
+    createdStr,
+    createdSource,
+    verified: Boolean(ud.verified),
+    privateAccount: Boolean(ud.privateAccount),
+    commerceUser: Boolean(ud.commerceUserInfo?.commerceUser || ud.ttSeller),
+    isLiveNow: roomIdStr !== '' && roomIdStr !== '0',
+    stats: {
+      followers: numFollowers.toLocaleString(),
+      following: Number(statsV2.followingCount || stats.followingCount || 0).toLocaleString(),
+      likes: Number(statsV2.heartCount || stats.heartCount || 0).toLocaleString(),
+      videos: Number(statsV2.videoCount || stats.videoCount || 0).toLocaleString()
+    },
+    signature: ud.signature || '',
+    bioLink: ud.bioLink ? ud.bioLink.link : '',
+    bioMentions,
+    secUid: ud.secUid || '',
+    profileUrl: `https://www.tiktok.com/@${ud.uniqueId || username}`
+  };
+}
+
+function formatTelegramReport(d) {
+  const e = escapeHtml;
+  const lines = [];
+
+  lines.push('🦅 <b>نـتـيـجـة الـفـحـص الاسـتـخـبـاراتـي (FOX OSINT)</b> ⚡');
+  lines.push('━━━━━━━━━━━━━━━━━━━━');
+  lines.push(`👤 <b>الـحـسـاب:</b> @${e(d.username)}${d.nickname ? ` (<code>${e(d.nickname)}</code>)` : ''}`);
+  lines.push(`🆔 <b>الـمـعـرف الـرقـمـي (UID):</b> <code>${e(d.uid)}</code>`);
+  
+  if (d.createdStr) {
+    const src = d.createdSource === 'exact' ? 'رسمي' : 'تقديري Snowflake';
+    lines.push(`📅 <b>تـاريـخ الإنـشـاء:</b> ${e(d.createdStr)} <i>(${src})</i>`);
+  } else {
+    lines.push('📅 <b>تـاريـخ الإنـشـاء:</b> غير معلن في البيانات العامة');
+  }
+
+  if (d.country) {
+    lines.push(`🌍 <b>دولـة الـحـسـاب:</b> ${d.country.flag} ${e(d.country.name)} <i>(${e(d.country.sourceLabel)})</i>`);
+  } else {
+    lines.push('🌍 <b>دولـة الـحـسـاب:</b> 🌐 غير محددة صراحة');
+  }
+
+  lines.push(`✅ <b>الـتـوثـيـق:</b> ${d.verified ? 'موثق بالعلامة الزرقاء ✔️' : 'غير موثق'}`);
+  lines.push(`🔒 <b>نـوع الـحـسـاب:</b> ${d.privateAccount ? 'حساب خاص 🔐' : 'حساب عام 🌍'}`);
+  lines.push(`💼 <b>حـسـاب تـجـاري:</b> ${d.commerceUser ? 'نعم (متجر تيك توك) 💼' : 'شخصي'}`);
+  lines.push(`📡 <b>الـبـث الـمـبـاشـر:</b> ${d.isLiveNow ? 'نشط الآن 🔴' : 'لا يوجد بث حالياً ⚪'}`);
+  
+  lines.push('━━━━━━━━━━━━━━━━━━━━');
+  lines.push('📊 <b>الإحـصـائـيـات الـحـقـيـقـيـة:</b>');
+  lines.push(`👥 <b>الـمـتـابـعـون:</b> <b>${e(d.stats.followers)}</b>`);
+  lines.push(`👤 <b>يـتـابـع:</b> ${e(d.stats.following)}`);
+  lines.push(`❤️ <b>الإعـجـابـات:</b> ${e(d.stats.likes)}`);
+  lines.push(`🎬 <b>الـفـيـديـوهـات:</b> ${e(d.stats.videos)}`);
+
+  if (d.signature) {
+    lines.push('━━━━━━━━━━━━━━━━━━━━');
+    lines.push(`📝 <b>الـنـبـذة (Bio):</b>\n<i>${e(d.signature)}</i>`);
+  }
+  if (d.bioLink) {
+    lines.push(`🔗 <b>الـرابـط:</b> ${e(d.bioLink)}`);
+  }
+  if (d.bioMentions && d.bioMentions.length) {
+    lines.push(`🔗 <b>منصات مذكورة:</b> ${d.bioMentions.map(e).join('، ')}`);
+  }
+
+  lines.push('━━━━━━━━━━━━━━━━━━━━');
+  lines.push('⚠️ <b>مـعـلـومـات الـحـمـايـة والأمـان:</b>');
+  lines.push('• البريد الإلكتروني ورقم الهاتف وPasskey: مشفرة وخاصة بمالك الحساب ولا يتيحها TikTok للعامة.');
+  lines.push(`🔗 <a href="${e(d.profileUrl)}">فتح الملف الشخصي على TikTok</a>`);
+
+  return lines.join('\n');
+}
+
+module.exports = {
+  inspectAccount,
+  formatTelegramReport,
+  normalizeUsername
+};

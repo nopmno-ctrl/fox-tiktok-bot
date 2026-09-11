@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: fox-osint-bot
+    runtime: node
+    plan: free
+    region: ohio
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        value: 8965997992:AAEPhCgLq1q0x5msiF-5zutQgCkkW0GlJnI
+      - key: PORT
+        value: 3000
