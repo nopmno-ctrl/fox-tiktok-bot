@@ -306,7 +306,7 @@ async function inspectAccount(rawInput, proxyUrl = null) {
   }
 
   const tikcheckBlock = {
-    accountLine: `الحساب • ${ud.uniqueId || username} || ${loginOriginText}`,
+    accountLine: `الحساب • ${ud.uniqueId || username}`,
     passkeyText: hasPasskey ? 'يوجد Passkey ⚠️' : 'لا يوجد Passkey ✅',
     externalText: hasExternal ? `يوجد روابط خارجية (${externalPlatform}) ⚠️` : 'لا يوجد روابط خارجية ✅',
     emailStatus: hasEmail ? '(✅)' : '(❌)',
@@ -352,12 +352,8 @@ function formatTelegramReport(d) {
   const e = escapeHtml;
   const lines = [];
 
-  const countryDisplay = d.loginOriginText || (d.country 
-    ? `تم تسجيل الدخول من ${d.country.flag} ${d.country.name || d.country.code || ''}`
-    : 'تم تسجيل الدخول من 🇺🇸');
-
-  // شكل TikCheck المعتمد تماماً
-  lines.push(`الحساب • <b>${e(d.username)}</b> || ${countryDisplay}`);
+  // تقرير الفحص الاستخباراتي المعتمد 100%
+  lines.push(`الحساب • <b>${e(d.username)}</b>`);
   lines.push(d.hasPasskey ? 'يوجد Passkey ⚠️' : 'لا يوجد Passkey ✅');
   lines.push(d.hasExternal ? `يوجد روابط خارجية (${e(d.externalPlatform)}) ⚠️` : 'لا يوجد روابط خارجية ✅');
   lines.push(`البريد: (${d.hasEmail ? '✅' : '❌'})  الهاتف: (${d.hasPhone ? '✅' : '❌'})`);
