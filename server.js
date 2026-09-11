@@ -148,9 +148,10 @@ if (TELEGRAM_TOKEN && TELEGRAM_TOKEN !== 'YOUR_TOKEN_HERE') {
           await ctx.api.sendPhoto({
             chat_id: chatId,
             photo: data.avatar,
-            caption: `👤 <b>${data.nickname || data.username}</b> (@${data.username})\n🆔 UID: <code>${data.uid}</code>`,
+            caption: report,
             parse_mode: 'HTML'
           });
+          return;
         } catch (_) {}
       }
 
