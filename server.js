@@ -11,6 +11,10 @@ const http = require('http');
 const url = require('url');
 const { Bot } = require('node-telegram-bot-api');
 const engine = require('./engine');
+const proxyManager = require('./proxy_manager');
+
+// تهيئة حوض البروكسيات التلقائي
+proxyManager.init().catch(() => {});
 
 const PORT = process.env.PORT || 3000;
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8965997992:AAEPhCgLq1q0x5msiF-5zutQgCkkW0GlJnI';

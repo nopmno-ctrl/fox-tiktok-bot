@@ -104,9 +104,12 @@ function extractUserDetail(html) {
   }
 }
 
-async function fetchTikTokProfileHtml(username, proxyUrl = null) {
+const proxyManager = require('./proxy_manager');
+
+async function fetchTikTokProfileHtml(username, explicitProxy = null) {
   const url = `https://www.tiktok.com/@${encodeURIComponent(username)}`;
   
+  // 1. المحاولة الأولى: عبر خادم Render السحابي المباشر في أمريكا
   for (const ua of USER_AGENTS) {
     try {
       const config = {
@@ -116,7 +119,7 @@ async function fetchTikTokProfileHtml(username, proxyUrl = null) {
           'Accept-Language': 'en-US,en;q=0.9',
           'Cache-Control': 'no-cache'
         },
-        timeout: 12000,
+        timeout: 10000,
         validateStatus: () => true
       };
 
@@ -130,14 +133,16 @@ async function fetchTikTokProfileHtml(username, proxyUrl = null) {
     } catch (e) {}
   }
 
-  // محاولة عبر بوابة السيرفر الأمريكي المباشرة
+  // 2. المحاولة الثانية: عبر بوابة السيرفر الأمريكي مع تزوير IP أمريكي عشوائي
   try {
+    const randomIp = `104.28.${Math.floor(Math.random() * 200 + 10)}.${Math.floor(Math.random() * 250 + 1)}`;
     const usRes = await axios.get(`https://web-va.tiktok.com/@${encodeURIComponent(username)}`, {
       headers: {
         'User-Agent': USER_AGENTS[0],
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'X-Forwarded-For': '104.28.194.22',
-        'Client-IP': '104.28.194.22'
+        'X-Forwarded-For': randomIp,
+        'Client-IP': randomIp,
+        'CF-IPCountry': 'US'
       },
       timeout: 10000,
       validateStatus: () => true
@@ -149,6 +154,40 @@ async function fetchTikTokProfileHtml(username, proxyUrl = null) {
       }
     }
   } catch (e) {}
+
+  // 3. المحاولة الثالثة: عبر حوض البروكسي الأمريكي المتجدد (Rotating Proxy Pool)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const proxy = explicitProxy || await proxyManager.getNextProxy();
+    if (!proxy) break;
+
+    try {
+      const config = {
+        headers: {
+          'User-Agent': USER_AGENTS[attempt % USER_AGENTS.length],
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
+        },
+        timeout: 9000,
+        validateStatus: () => true,
+        proxy: {
+          protocol: proxy.protocol,
+          host: proxy.host,
+          port: proxy.port,
+          auth: proxy.auth
+        }
+      };
+
+      const res = await axios.get(url, config);
+      if (res.status === 200 && res.data) {
+        const detail = extractUserDetail(String(res.data));
+        if (detail && detail.userInfo && detail.userInfo.user) {
+          return { status: 200, detail };
+        }
+      }
+    } catch (err) {
+      proxyManager.markFailed(proxy);
+    }
+  }
 
   return { status: 403, detail: null };
 }
