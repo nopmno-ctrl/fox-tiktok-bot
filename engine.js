@@ -277,11 +277,30 @@ async function inspectAccount(rawInput, proxyUrl = null) {
   const roomIdStr = String(ud.roomId || '').trim();
 
   // مؤشرات الحماية ونمط TikCheck المعتمد
-  const hasPasskey = Boolean(ud.hasPasskey || ud.fidoRegistered);
+  // 1. فحص مفتاح الأمان Passkey (WebAuthn / FIDO2)
+  const hasPasskey = Boolean(ud.hasPasskey || ud.fidoRegistered || ud.isPasskeyBound);
+
+  // 2. فحص الروابط الخارجية
   const hasExternal = bioMentions.length > 0;
   const externalPlatform = hasExternal ? bioMentions.join('، ') : null;
-  const hasEmail = Boolean((ud.signature && /@|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(ud.signature)) || (ud.commerceUserInfo && ud.commerceUserInfo.commerceUser));
-  const hasPhone = true;
+
+  // 3. فحص ربط البريد والهاتف بناءً على قناة التسجيل الرسمية
+  // - فحص وجود بريد بالنبذة أو في ملف المتجر/التجارة
+  const bioHasEmail = Boolean((ud.signature && /@|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(ud.signature)) || (ud.commerceUserInfo && ud.commerceUserInfo.commerceUser));
+  
+  // الحسابات المسجلة عبر الويب أو البريد تكون بدون هاتف صريح، أو العكس
+  let hasEmail = Boolean(bioHasEmail || ud.email || ud.isEmailBound || (ud.secUid && !ud.isPhoneBound));
+  let hasPhone = Boolean(ud.phone || ud.isPhoneBound);
+
+  // إذا لم يكن الهاتف مؤكداً صراحة ولم يكن هناك بريد بالنبذة، نعتمد على وسيلة الحساب
+  if (!hasPhone && !hasEmail) {
+    // الوضع الافتراضي للحسابات الشخصية المنشأة بالبريد
+    hasEmail = true;
+    hasPhone = false;
+  } else if (hasEmail && !ud.isPhoneBound && !ud.phone) {
+    // حساب مثبت أنه مربوط بالبريد
+    hasPhone = false;
+  }
 
   const tikcheckBlock = {
     accountLine: `الحساب • ${ud.uniqueId || username} || ${country ? `تم تسجيل الدخول من ${country.flag} ${country.code || ''}` : 'تم تسجيل الدخول من 🌐'}`,
