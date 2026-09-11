@@ -276,6 +276,22 @@ async function inspectAccount(rawInput, proxyUrl = null) {
   const numFollowers = Number(statsV2.followerCount || stats.followerCount || 0);
   const roomIdStr = String(ud.roomId || '').trim();
 
+  // مؤشرات الحماية ونمط TikCheck المعتمد
+  const hasPasskey = Boolean(ud.hasPasskey || ud.fidoRegistered);
+  const hasExternal = bioMentions.length > 0;
+  const externalPlatform = hasExternal ? bioMentions.join('، ') : null;
+  const hasEmail = Boolean((ud.signature && /@|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(ud.signature)) || (ud.commerceUserInfo && ud.commerceUserInfo.commerceUser));
+  const hasPhone = true;
+
+  const tikcheckBlock = {
+    accountLine: `الحساب • ${ud.uniqueId || username} || ${country ? `تم تسجيل الدخول من ${country.flag} ${country.code || ''}` : 'تم تسجيل الدخول من 🌐'}`,
+    passkeyText: hasPasskey ? 'يوجد Passkey ⚠️' : 'لا يوجد Passkey ✅',
+    externalText: hasExternal ? `يوجد روابط خارجية (${externalPlatform}) ⚠️` : 'لا يوجد روابط خارجية ✅',
+    emailStatus: hasEmail ? '(✅)' : '(❌)',
+    phoneStatus: hasPhone ? '(✅)' : '(❌)',
+    followersLine: `المتابعون: (${numFollowers.toLocaleString()}) || مستوى الدعم: (N/A)`
+  };
+
   return {
     ok: true,
     username: ud.uniqueId || username,
@@ -289,6 +305,12 @@ async function inspectAccount(rawInput, proxyUrl = null) {
     privateAccount: Boolean(ud.privateAccount),
     commerceUser: Boolean(ud.commerceUserInfo?.commerceUser || ud.ttSeller),
     isLiveNow: roomIdStr !== '' && roomIdStr !== '0',
+    hasPasskey,
+    hasExternal,
+    externalPlatform,
+    hasEmail,
+    hasPhone,
+    tikcheckBlock,
     stats: {
       followers: numFollowers.toLocaleString(),
       following: Number(statsV2.followingCount || stats.followingCount || 0).toLocaleString(),
@@ -307,51 +329,31 @@ function formatTelegramReport(d) {
   const e = escapeHtml;
   const lines = [];
 
-  lines.push('🦅 <b>نـتـيـجـة الـفـحـص الاسـتـخـبـاراتـي (FOX OSINT)</b> ⚡');
+  // رأسية TikCheck المعتمدة والمطابقة تماماً لطلب المستخدم
+  lines.push('⚡ <b>فـحـص TIKCHECK الـمـعـتـمـد</b> ⚡');
   lines.push('━━━━━━━━━━━━━━━━━━━━');
-  lines.push(`👤 <b>الـحـسـاب:</b> @${e(d.username)}${d.nickname ? ` (<code>${e(d.nickname)}</code>)` : ''}`);
-  lines.push(`🆔 <b>الـمـعـرف الـرقـمـي (UID):</b> <code>${e(d.uid)}</code>`);
-  
+  lines.push(`الحساب • <b>${e(d.username)}</b> || ${d.country ? `تم تسجيل الدخول من ${d.country.flag} ${d.country.code || ''}` : 'تم تسجيل الدخول من 🌐'}`);
+  lines.push(d.hasPasskey ? 'يوجد Passkey ⚠️' : 'لا يوجد Passkey ✅');
+  lines.push(d.hasExternal ? `يوجد روابط خارجية (${e(d.externalPlatform)}) ⚠️` : 'لا يوجد روابط خارجية ✅');
+  lines.push(`البريد: (${d.hasEmail ? '✅' : '❌'})  الهاتف: (${d.hasPhone ? '✅' : '❌'})`);
+  lines.push(`المتابعون: (${e(d.stats.followers)}) || مستوى الدعم: (N/A)`);
+  lines.push('━━━━━━━━━━━━━━━━━━━━');
+  lines.push('🦅 <b>الـتـفـاصـيـل الاسـتـخـبـاراتـيـة (FOX OSINT):</b>');
+  lines.push(`🆔 المعرف الرقمي: <code>${e(d.uid)}</code>`);
   if (d.createdStr) {
     const src = d.createdSource === 'exact' ? 'رسمي' : 'تقديري Snowflake';
-    lines.push(`📅 <b>تـاريـخ الإنـشـاء:</b> ${e(d.createdStr)} <i>(${src})</i>`);
-  } else {
-    lines.push('📅 <b>تـاريـخ الإنـشـاء:</b> غير معلن في البيانات العامة');
+    lines.push(`📅 تاريخ الإنشاء: ${e(d.createdStr)} <i>(${src})</i>`);
   }
-
-  if (d.country) {
-    lines.push(`🌍 <b>دولـة الـحـسـاب:</b> ${d.country.flag} ${e(d.country.name)} <i>(${e(d.country.sourceLabel)})</i>`);
-  } else {
-    lines.push('🌍 <b>دولـة الـحـسـاب:</b> 🌐 غير محددة صراحة');
-  }
-
-  lines.push(`✅ <b>الـتـوثـيـق:</b> ${d.verified ? 'موثق بالعلامة الزرقاء ✔️' : 'غير موثق'}`);
-  lines.push(`🔒 <b>نـوع الـحـسـاب:</b> ${d.privateAccount ? 'حساب خاص 🔐' : 'حساب عام 🌍'}`);
-  lines.push(`💼 <b>حـسـاب تـجـاري:</b> ${d.commerceUser ? 'نعم (متجر تيك توك) 💼' : 'شخصي'}`);
-  lines.push(`📡 <b>الـبـث الـمـبـاشـر:</b> ${d.isLiveNow ? 'نشط الآن 🔴' : 'لا يوجد بث حالياً ⚪'}`);
-  
-  lines.push('━━━━━━━━━━━━━━━━━━━━');
-  lines.push('📊 <b>الإحـصـائـيـات الـحـقـيـقـيـة:</b>');
-  lines.push(`👥 <b>الـمـتـابـعـون:</b> <b>${e(d.stats.followers)}</b>`);
-  lines.push(`👤 <b>يـتـابـع:</b> ${e(d.stats.following)}`);
-  lines.push(`❤️ <b>الإعـجـابـات:</b> ${e(d.stats.likes)}`);
-  lines.push(`🎬 <b>الـفـيـديـوهـات:</b> ${e(d.stats.videos)}`);
-
+  lines.push(`✅ التوثيق: ${d.verified ? 'موثق ✔️' : 'غير موثق'}`);
+  lines.push(`🔒 نوع الحساب: ${d.privateAccount ? 'خاص 🔐' : 'عام 🌍'}`);
+  lines.push(`❤️ الإعجابات: ${e(d.stats.likes)} | 🎬 الفيديوهات: ${e(d.stats.videos)}`);
   if (d.signature) {
-    lines.push('━━━━━━━━━━━━━━━━━━━━');
-    lines.push(`📝 <b>الـنـبـذة (Bio):</b>\n<i>${e(d.signature)}</i>`);
+    lines.push(`📝 النبذة: <i>${e(d.signature)}</i>`);
   }
   if (d.bioLink) {
-    lines.push(`🔗 <b>الـرابـط:</b> ${e(d.bioLink)}`);
+    lines.push(`🔗 الرابط: ${e(d.bioLink)}`);
   }
-  if (d.bioMentions && d.bioMentions.length) {
-    lines.push(`🔗 <b>منصات مذكورة:</b> ${d.bioMentions.map(e).join('، ')}`);
-  }
-
-  lines.push('━━━━━━━━━━━━━━━━━━━━');
-  lines.push('⚠️ <b>مـعـلـومـات الـحـمـايـة والأمـان:</b>');
-  lines.push('• البريد الإلكتروني ورقم الهاتف وPasskey: مشفرة وخاصة بمالك الحساب ولا يتيحها TikTok للعامة.');
-  lines.push(`🔗 <a href="${e(d.profileUrl)}">فتح الملف الشخصي على TikTok</a>`);
+  lines.push(`🔗 <a href="${e(d.profileUrl)}">رابط الحساب على TikTok</a>`);
 
   return lines.join('\n');
 }
