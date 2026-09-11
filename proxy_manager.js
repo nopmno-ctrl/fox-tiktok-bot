@@ -2,67 +2,56 @@
  * ==============================================================================
  * 🛡️ FOX CLOUD BOT - AUTO-ROTATING PROXY MANAGER
  * ==============================================================================
- * نظام تدوير البروكسيات الأمريكي التلقائي لتفادي حظر الـ IP والكابتشا
+ * نظام تدوير البروكسيات المخصص والمحمي من الحظر (Webshare Dedicated Pool)
  * ==============================================================================
  */
-
-const axios = require('axios');
 
 class ProxyManager {
   constructor() {
     this.customProxy = process.env.PROXY_URL || null;
-    this.proxyList = [];
+
+    // قائمة الـ 10 بروكسيات السكنية والمخصصة من Webshare (مع إعطاء الأولوية لبروكسيات أمريكا)
+    this.dedicatedProxies = [
+      // 🇺🇸 أمريكا (US - Los Angeles)
+      'http://isznqkxo:fdyqudtpyx6m@198.23.243.226:6361',
+      // 🇺🇸 أمريكا (US - Piscataway)
+      'http://isznqkxo:fdyqudtpyx6m@38.154.185.97:6370',
+      // 🇺🇸 أمريكا (US - Los Angeles)
+      'http://isznqkxo:fdyqudtpyx6m@191.96.254.138:6185',
+      // 🇬🇧 بريطانيا (UK - London)
+      'http://isznqkxo:fdyqudtpyx6m@31.59.20.176:6754',
+      // 🇬🇧 بريطانيا (UK - London)
+      'http://isznqkxo:fdyqudtpyx6m@45.38.107.97:6014',
+      // 🇬🇧 بريطانيا (UK - London)
+      'http://isznqkxo:fdyqudtpyx6m@198.105.121.200:6462',
+      // 🇪🇸 إسبانيا (ES - Madrid)
+      'http://isznqkxo:fdyqudtpyx6m@64.137.96.74:6641',
+      // 🇩🇪 ألمانيا (DE - Frankfurt)
+      'http://isznqkxo:fdyqudtpyx6m@31.58.9.4:6077',
+      // 🇵🇱 بولندا (PL - Warsaw)
+      'http://isznqkxo:fdyqudtpyx6m@84.247.60.125:6095',
+      // 🇯🇵 اليابان (JP - Tokyo)
+      'http://isznqkxo:fdyqudtpyx6m@142.111.67.146:5611'
+    ];
+
     this.currentIndex = 0;
-    this.lastFetched = 0;
-    this.fetchIntervalMs = 60 * 60 * 1000; // تحديث القائمة كل ساعة
   }
 
   async init() {
-    if (this.customProxy) {
-      console.log('🛡️ [PROXY_MANAGER] استخدام بروكسي مخصص من الإعدادات:', this.customProxy.replace(/:[^:@]+@/, ':***@'));
-      return;
-    }
-    await this.refreshFreeProxyPool();
-  }
-
-  async refreshFreeProxyPool() {
-    try {
-      console.log('🔄 [PROXY_MANAGER] جاري جلب قائمة بروكسيات أمريكية حرة نشطة...');
-      const res = await axios.get('https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=4000&country=US&ssl=all&anonymity=all', {
-        timeout: 8000
-      });
-
-      if (res.data && typeof res.data === 'string') {
-        const lines = res.data.trim().split(/\r?\n/).map(l => l.trim()).filter(l => /^[0-9.]+:[0-9]+$/.test(l));
-        if (lines.length > 0) {
-          this.proxyList = lines;
-          this.lastFetched = Date.now();
-          console.log(`✅ [PROXY_MANAGER] تم تحميل ${this.proxyList.length} بروكسي أمريكي نشط في حوض التدوير.`);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('⚠️ [PROXY_MANAGER] تعذر جلب حوض البروكسي العام:', e.message);
-    }
+    console.log(`🛡️ [PROXY_MANAGER] تم تفعيل حوض Webshare المخصص بنجاح (${this.dedicatedProxies.length} بروكسيات نشطة).`);
   }
 
   async getNextProxy() {
-    // إذا كان هناك بروكسي مخصص من المستخدم (مثل Webshare)، استخدمه دائماً
     if (this.customProxy) {
       return this.parseProxy(this.customProxy);
     }
 
-    // تحديث الحوض إذا انتهت مدته
-    if (Date.now() - this.lastFetched > this.fetchIntervalMs || this.proxyList.length === 0) {
-      await this.refreshFreeProxyPool();
+    if (this.dedicatedProxies.length === 0) {
+      return null;
     }
 
-    if (this.proxyList.length === 0) {
-      return null; // اتصال مباشر
-    }
-
-    this.currentIndex = (this.currentIndex + 1) % this.proxyList.length;
-    const raw = this.proxyList[this.currentIndex];
+    this.currentIndex = (this.currentIndex + 1) % this.dedicatedProxies.length;
+    const raw = this.dedicatedProxies[this.currentIndex];
     return this.parseProxy(raw);
   }
 
@@ -87,8 +76,7 @@ class ProxyManager {
 
   markFailed(proxyObj) {
     if (!proxyObj || !proxyObj.rawUrl) return;
-    const clean = proxyObj.host + ':' + proxyObj.port;
-    this.proxyList = this.proxyList.filter(p => !p.includes(clean));
+    console.warn(`⚠️ [PROXY_MANAGER] تدوير البروكسي بعد تعثر: ${proxyObj.host}:${proxyObj.port}`);
   }
 }
 
