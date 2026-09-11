@@ -118,8 +118,8 @@ class FoxBridgeService {
   formatFoxReport(data) {
     const lines = [];
     lines.push(`الحساب • <b>${data.username}</b>`);
-    lines.push(data.hasPasskey ? 'يوجد Passkey ⚠️' : 'لا يوجد Passkey ✅');
-    lines.push(data.hasExternal ? `يوجد روابط خارجية (${data.externalPlatform}) ⚠️` : 'لا يوجد روابط خارجية ✅');
+    lines.push(data.hasPasskey ? 'يوجد Passkey ✅' : 'لا يوجد Passkey ❌');
+    lines.push(data.hasExternal ? `يوجد روابط خارجية (${data.externalPlatform}) ✅` : 'لا يوجد روابط خارجية ❌');
     lines.push(`البريد: (${data.hasEmail ? '✅' : '❌'})  الهاتف: (${data.hasPhone ? '✅' : '❌'})`);
     lines.push(`المتابعون: (${data.followers}) || مستوى الدعم: (N/A)`);
     return lines.join('\n');

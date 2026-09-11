@@ -307,8 +307,8 @@ async function inspectAccount(rawInput, proxyUrl = null) {
 
   const tikcheckBlock = {
     accountLine: `الحساب • ${ud.uniqueId || username}`,
-    passkeyText: hasPasskey ? 'يوجد Passkey ⚠️' : 'لا يوجد Passkey ✅',
-    externalText: hasExternal ? `يوجد روابط خارجية (${externalPlatform}) ⚠️` : 'لا يوجد روابط خارجية ✅',
+    passkeyText: hasPasskey ? 'يوجد Passkey ✅' : 'لا يوجد Passkey ❌',
+    externalText: hasExternal ? `يوجد روابط خارجية (${externalPlatform}) ✅` : 'لا يوجد روابط خارجية ❌',
     emailStatus: hasEmail ? '(✅)' : '(❌)',
     phoneStatus: hasPhone ? '(✅)' : '(❌)',
     followersLine: `المتابعون: (${followersDisplay}) || مستوى الدعم: (N/A)`
@@ -354,8 +354,8 @@ function formatTelegramReport(d) {
 
   // تقرير الفحص الاستخباراتي المعتمد 100%
   lines.push(`الحساب • <b>${e(d.username)}</b>`);
-  lines.push(d.hasPasskey ? 'يوجد Passkey ⚠️' : 'لا يوجد Passkey ✅');
-  lines.push(d.hasExternal ? `يوجد روابط خارجية (${e(d.externalPlatform)}) ⚠️` : 'لا يوجد روابط خارجية ✅');
+  lines.push(d.hasPasskey ? 'يوجد Passkey ✅' : 'لا يوجد Passkey ❌');
+  lines.push(d.hasExternal ? `يوجد روابط خارجية (${e(d.externalPlatform)}) ✅` : 'لا يوجد روابط خارجية ❌');
   lines.push(`البريد: (${d.hasEmail ? '✅' : '❌'})  الهاتف: (${d.hasPhone ? '✅' : '❌'})`);
   lines.push(`المتابعون: (${e(d.stats.followers)}) || مستوى الدعم: (N/A)`);
   lines.push('');
