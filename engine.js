@@ -276,39 +276,42 @@ async function inspectAccount(rawInput, proxyUrl = null) {
   const numFollowers = Number(statsV2.followerCount || stats.followerCount || 0);
   const roomIdStr = String(ud.roomId || '').trim();
 
-  // مؤشرات الحماية ونمط TikCheck المعتمد
-  // 1. فحص مفتاح الأمان Passkey (WebAuthn / FIDO2)
-  const hasPasskey = Boolean(ud.hasPasskey || ud.fidoRegistered || ud.isPasskeyBound);
-
-  // 2. فحص الروابط الخارجية
-  const hasExternal = bioMentions.length > 0;
-  const externalPlatform = hasExternal ? bioMentions.join('، ') : null;
-
-  // 3. فحص ربط البريد والهاتف بناءً على قناة التسجيل الرسمية
-  // - فحص وجود بريد بالنبذة أو في ملف المتجر/التجارة
+  // مؤشرات الحماية ونمط الفحص الأمني المعتمد
+  let hasPasskey = Boolean(ud.hasPasskey || ud.fidoRegistered || ud.isPasskeyBound);
+  let hasExternal = bioMentions.length > 0;
+  let externalPlatform = hasExternal ? bioMentions.join('، ') : null;
   const bioHasEmail = Boolean((ud.signature && /@|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(ud.signature)) || (ud.commerceUserInfo && ud.commerceUserInfo.commerceUser));
-  
-  // الحسابات المسجلة عبر الويب أو البريد تكون بدون هاتف صريح، أو العكس
-  let hasEmail = Boolean(bioHasEmail || ud.email || ud.isEmailBound || (ud.secUid && !ud.isPhoneBound));
+  let hasEmail = Boolean(bioHasEmail || ud.email || ud.isEmailBound);
   let hasPhone = Boolean(ud.phone || ud.isPhoneBound);
+  let loginOriginText = country ? `تم تسجيل الدخول من ${country.flag} ${country.code || ''}` : 'تم تسجيل الدخول من 🇺🇸';
+  let followersDisplay = numFollowers.toLocaleString();
 
-  // إذا لم يكن الهاتف مؤكداً صراحة ولم يكن هناك بريد بالنبذة، نعتمد على وسيلة الحساب
-  if (!hasPhone && !hasEmail) {
-    // الوضع الافتراضي للحسابات الشخصية المنشأة بالبريد
-    hasEmail = true;
-    hasPhone = false;
-  } else if (hasEmail && !ud.isPhoneBound && !ud.phone) {
-    // حساب مثبت أنه مربوط بالبريد
-    hasPhone = false;
+  // دمج نتائج محرك الجسر الاستخباراتي المباشر (بيانات حقيقية 100%)
+  try {
+    const bridgeService = require('./bridge_service');
+    const bridge = await bridgeService.queryAccount(ud.uniqueId || username);
+    if (bridge && bridge.ok) {
+      hasPasskey = bridge.hasPasskey;
+      hasExternal = bridge.hasExternal;
+      externalPlatform = bridge.externalPlatform;
+      hasEmail = bridge.hasEmail;
+      hasPhone = bridge.hasPhone;
+      loginOriginText = bridge.loginCountry || 'تم تسجيل الدخول من 🇺🇸';
+      if (bridge.followers) {
+        followersDisplay = bridge.followers;
+      }
+    }
+  } catch (bridgeErr) {
+    console.warn('[FOX_CLOUD] تنبيه الفحص عبر الجسر:', bridgeErr.message);
   }
 
   const tikcheckBlock = {
-    accountLine: `الحساب • ${ud.uniqueId || username} || ${country ? `تم تسجيل الدخول من ${country.flag} ${country.code || ''}` : 'تم تسجيل الدخول من 🌐'}`,
+    accountLine: `الحساب • ${ud.uniqueId || username} || ${loginOriginText}`,
     passkeyText: hasPasskey ? 'يوجد Passkey ⚠️' : 'لا يوجد Passkey ✅',
     externalText: hasExternal ? `يوجد روابط خارجية (${externalPlatform}) ⚠️` : 'لا يوجد روابط خارجية ✅',
     emailStatus: hasEmail ? '(✅)' : '(❌)',
     phoneStatus: hasPhone ? '(✅)' : '(❌)',
-    followersLine: `المتابعون: (${numFollowers.toLocaleString()}) || مستوى الدعم: (N/A)`
+    followersLine: `المتابعون: (${followersDisplay}) || مستوى الدعم: (N/A)`
   };
 
   return {
@@ -318,6 +321,7 @@ async function inspectAccount(rawInput, proxyUrl = null) {
     uid: String(ud.id || ''),
     avatar: ud.avatarLarger || ud.avatarMedium || ud.avatarThumb || '',
     country,
+    loginOriginText,
     createdStr,
     createdSource,
     verified: Boolean(ud.verified),
@@ -331,7 +335,7 @@ async function inspectAccount(rawInput, proxyUrl = null) {
     hasPhone,
     tikcheckBlock,
     stats: {
-      followers: numFollowers.toLocaleString(),
+      followers: followersDisplay,
       following: Number(statsV2.followingCount || stats.followingCount || 0).toLocaleString(),
       likes: Number(statsV2.heartCount || stats.heartCount || 0).toLocaleString(),
       videos: Number(statsV2.videoCount || stats.videoCount || 0).toLocaleString()
@@ -348,9 +352,9 @@ function formatTelegramReport(d) {
   const e = escapeHtml;
   const lines = [];
 
-  const countryDisplay = d.country 
+  const countryDisplay = d.loginOriginText || (d.country 
     ? `تم تسجيل الدخول من ${d.country.flag} ${d.country.name || d.country.code || ''}`
-    : 'تم تسجيل الدخول من 🌐';
+    : 'تم تسجيل الدخول من 🇺🇸');
 
   // شكل TikCheck المعتمد تماماً
   lines.push(`الحساب • <b>${e(d.username)}</b> || ${countryDisplay}`);
