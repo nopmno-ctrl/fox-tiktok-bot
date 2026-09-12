@@ -108,13 +108,13 @@ if (TELEGRAM_TOKEN && TELEGRAM_TOKEN !== 'YOUR_TOKEN_HERE') {
     let text = (ctx.message?.text || '').trim();
     if (!chatId || !text) return;
 
-    if (text.startsWith('/start') || text.startsWith('/help')) {
+    if (/^\/(start|help)(@\w+)?/i.test(text)) {
       await ctx.reply(WELCOME_MSG, { parse_mode: 'HTML', disable_web_page_preview: true });
       return;
     }
 
     if (text.startsWith('/check')) {
-      text = text.replace(/^\/check\s*/i, '').trim();
+      text = text.replace(/^\/check(?:@\w+)?\s*/i, '').trim();
     }
 
     if (!text) {
